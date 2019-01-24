@@ -49,6 +49,7 @@ defmodule Wobserver.Mixfile do
       extra_applications: [
         :logger,
         :httpoison,
+        :plug_cowboy
       ],
       mod: {Wobserver.Application, []},]
   end
@@ -64,7 +65,6 @@ defmodule Wobserver.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:cowboy, "~> 1.1"},
       {:credo, "~> 0.7", only: [:dev, :test]},
       {:dialyxir, "~> 0.5", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.15", only: :dev},
@@ -72,7 +72,8 @@ defmodule Wobserver.Mixfile do
       {:httpoison, "~> 1.2"},
       {:inch_ex, "~> 0.5", only: [:dev, :test]},
       {:meck, "~> 0.8.4", only: :test},
-      {:plug, "~> 1.3 or ~> 1.4"},
+      {:plug_cowboy, "~> 2.0"},
+      {:plug, "~> 1.7"},
       {:poison, "~> 2.0 or ~> 3.1"},
       {:websocket_client, "~> 1.2"},
     ]
