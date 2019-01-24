@@ -7,7 +7,7 @@ class WobserverClient {
     this.node = 'local';
     this.promises = {}
     this.state = 0;
-    this.url = (location.protocol == 'https:' ? 'wss' : 'ws') + '://' + this.host + '/ws'
+    this.url = (location.protocol == 'https:' ? 'wss' : 'ws') + '://' + this.host + '/websocket'
   }
 
   connect(node_change, fallback_callback, connected_callback) {

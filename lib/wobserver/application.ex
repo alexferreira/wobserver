@@ -73,7 +73,7 @@ defmodule Wobserver.Application do
       ],
       dispatch: [
         {:_, [
-          {"/ws", Wobserver.Web.Client, []},
+          {"/websocket", Wobserver.Web.Client, []},
           {:_, Cowboy.Handler, {Wobserver.Web.Router, []}}
         ]}
       ],

@@ -22,7 +22,7 @@ defmodule Wobserver.Web.PhoenixSocket do
       cowboy: Wobserver.Web.Client
     ]
     callback_module = __MODULE__
-    transport_path = :ws
+    transport_path = :websocket
     websocket_socket = {transport_path, {callback_module, config}}
     # Only handling one type, websocket, no longpolling or anything else
     [
