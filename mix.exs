@@ -69,7 +69,7 @@ defmodule Wobserver.Mixfile do
       {:dialyxir, "~> 0.5", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.15", only: :dev},
       {:excoveralls, "~> 0.6", only: :test},
-      {:httpoison, "~> 1.2"},
+      {:httpoison, "~> 1.5"},
       {:inch_ex, "~> 0.5", only: [:dev, :test]},
       {:meck, "~> 0.8.4", only: :test},
       {:plug_cowboy, "~> 2.0"},
