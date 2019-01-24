@@ -12,12 +12,16 @@ defmodule Wobserver.Web.PhoenixSocket do
     ```
   """
 
+  def child_spec(opts) do
+    Phoenix.Socket.__child_spec__(__MODULE__, opts)
+  end
+
   @doc false
   def __transports__ do
     config = [
       cowboy: Wobserver.Web.Client
     ]
-    callback_module = Wobserver.Web.PhoenixSocket
+    callback_module = __MODULE__
     transport_path = :ws
     websocket_socket = {transport_path, {callback_module, config}}
     # Only handling one type, websocket, no longpolling or anything else
