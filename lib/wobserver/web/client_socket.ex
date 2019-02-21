@@ -63,7 +63,7 @@ defmodule Wobserver.Web.ClientSocket do
 
       @security Application.get_env(:wobserver, :security, Wobserver.Security)
 
-      @behaviour :cowboy_websocket_handler
+      @behaviour :cowboy_websocket
       @behaviour Wobserver.Web.ClientSocket
 
       @timeout 60_000
@@ -77,13 +77,9 @@ defmodule Wobserver.Web.ClientSocket do
 
       The `req` cowboy request and `options` are passed, but unused in the setup.
       """
-      @spec init(any, :cowboy_req.req, any) ::
-        {:upgrade, :protocol, :cowboy_websocket}
-      def init(_, req, _options) do
-        case @security.authenticated?(req) do
-          true -> {:upgrade, :protocol, :cowboy_websocket}
-          false -> {:ok, req, :cowboy_websocket}
-        end
+      @spec init(:cowboy_req.req(), any) :: {:cowboy_websocket, :cowboy_req.req(), any}
+      def init(req, options) do
+        {:cowboy_websocket, req, options}
       end
 
       @doc ~S"""
@@ -93,14 +89,14 @@ defmodule Wobserver.Web.ClientSocket do
 
       The `type` and `options` are passed, but unused in the setup.
       """
-      @spec websocket_init(any, req :: :cowboy_req.req, any) ::
-        {:ok, :cowboy_req.req, any, non_neg_integer}
-      def websocket_init(_type, req, _options) do
+      @spec websocket_init(any) :: {:ok, any}
+      def websocket_init(state) do
         case client_init() do
-          {:ok, state, timeout} ->
-            {:ok, req, %{state: state, proxy: nil}, timeout}
+          {:ok, state, _timeout} ->
+            {:ok, %{state: state, proxy: nil}}
+
           {:ok, state} ->
-            {:ok, req, %{state: state, proxy: nil}, @timeout}
+            {:ok, %{state: state, proxy: nil}}
         end
       end
 
@@ -123,37 +119,41 @@ defmodule Wobserver.Web.ClientSocket do
       The `req` is ignored.
       """
       @spec websocket_handle(
-        {:text, String.t},
-        req :: :cowboy_req.req,
-        state :: any
-      ) :: {:reply, {:text, String.t}, :cowboy_req.req, any}
-        | {:ok, :cowboy_req.req, any}
-      def websocket_handle(message, req, state)
+              {:text, String.t()},
+              state :: any
+            ) ::
+              {:reply, {:text, String.t()}, any}
+              | {:ok, any}
+      def websocket_handle(message, state)
 
-      def websocket_handle({:text, command}, req, state = %{proxy: nil}) do
+      def websocket_handle({:text, command}, state = %{proxy: nil}) do
         case parse_command(command) do
           {:setup_proxy, name} ->
-            setup_proxy(name, state, req)
+            setup_proxy(name, state)
+
           :nodes ->
-            {:reply, :nodes, Discovery.discover, state.state}
-            |> send_response(state, req)
+            {:reply, :nodes, Discovery.discover(), state.state}
+            |> send_response(state)
+
           parsed_command ->
             parsed_command
             |> client_handle(state.state)
-            |> send_response(state, req)
+            |> send_response(state)
         end
       end
 
-      def websocket_handle({:text, command}, req, state) do
+      def websocket_handle({:text, command}, state) do
         case parse_command(command) do
           {:setup_proxy, name} ->
-            setup_proxy(name, state, req)
+            setup_proxy(name, state)
+
           :nodes ->
-            {:reply, :nodes, Discovery.discover, state.state}
-            |> send_response(state, req)
+            {:reply, :nodes, Discovery.discover(), state.state}
+            |> send_response(state)
+
           parsed_command ->
-            send state.proxy, {:proxy, command}
-            {:ok, req, state}
+            send(state.proxy, {:proxy, command})
+            {:ok, state}
         end
       end
 
@@ -166,26 +166,26 @@ defmodule Wobserver.Web.ClientSocket do
       The `req` is ignored.
       """
       @spec websocket_info(
-        message :: any,
-        req :: :cowboy_req.req,
-        state :: any
-      ) :: {:reply, {:text, String.t}, :cowboy_req.req, any}
-        | {:ok, :cowboy_req.req, any}
-      def websocket_info(message, req, state)
+              {timeout :: any, ref :: any, msg :: any},
+              state :: any
+            ) ::
+              {:reply, {:text, String.t()}, any}
+              | {:ok, any}
+      def websocket_info(message, state)
 
-      def websocket_info({:proxy, data}, req, state) do
-        {:reply, {:text, data}, req, state}
+      def websocket_info({:proxy, data}, state) do
+        {:reply, {:text, data}, state}
       end
 
-      def websocket_info(:proxy_disconnect, req, state) do
-        {:reply, :proxy_disconnect, state.state, req}
-        |> send_response(%{state | proxy: nil}, req)
+      def websocket_info(:proxy_disconnect, state) do
+        {:reply, :proxy_disconnect, state.state}
+        |> send_response(%{state | proxy: nil})
       end
 
-      def websocket_info(message, req, state) do
+      def websocket_info(message, state) do
         message
         |> client_info(state.state)
-        |> send_response(state, req)
+        |> send_response(state)
       end
     end
   end
@@ -196,13 +196,13 @@ defmodule Wobserver.Web.ClientSocket do
   @doc ~S"""
   Parses the JSON `payload` to an atom command and map data.
   """
-  @spec parse_command(payload :: String.t) :: atom | {atom, any}
+  @spec parse_command(payload :: String.t()) :: atom | {atom, any}
   def parse_command(payload) do
     command_data = Poison.decode!(payload)
 
     command =
       case String.split(command_data["command"], "/") do
-        [one_command] -> one_command |> String.to_atom
+        [one_command] -> one_command |> String.to_atom()
         list_of_commands -> list_of_commands |> Enum.map(&String.to_atom/1)
       end
 
@@ -215,69 +215,73 @@ defmodule Wobserver.Web.ClientSocket do
 
   @doc ~S"""
   Send a JSON encoded to the websocket client.
-
   The given `message` is JSON encoded (exception: `:noreply`).
   The `socket_state` is used updated to reflect changes made by the client.
   The cowboy `req` is returned untouched.
   """
   @spec send_response(
-    message ::  {:noreply, any}
-              | {:reply, atom | list(atom), any}
-              | {:reply, atom | list(atom), map | list | String.t | nil, any},
-    socket_state :: map,
-    req :: :cowboy_req.req
-  ) ::
-    {:reply, {:text, String.t}, :cowboy_req.req, map}
-    | {:ok, :cowboy_req.req, map}
-  def send_response(message, socket_state, req)
+          message ::
+            {:noreply, any}
+            | {:reply, atom | list(atom), any}
+            | {:reply, atom | list(atom), map | list | String.t() | nil, any},
+          socket_state :: map
+        ) ::
+          {:reply, {:text, String.t()}, map}
+          | {:ok, map}
+  def send_response(message, socket_state)
 
-  def send_response({:noreply, state}, socket_state, req) do
-    {:ok, req, %{socket_state | state: state}}
+  def send_response({:noreply, state}, socket_state) do
+    {:ok, %{socket_state | state: state}}
   end
 
-  def send_response({:reply, type, message, state}, socket_state, req) do
+  def send_response({:reply, type, message, state}, socket_state) do
     data = %{
       type: uniform_type(type),
       timestamp: :os.system_time(:seconds),
-      data: message,
+      data: message
     }
 
     case Poison.encode(data) do
       {:ok, payload} ->
-        {:reply, {:text, payload}, req, %{socket_state | state: state}}
-      {:error, error} ->
-        Logger.warn "Wobserver.Web.ClientSocket: Can't send message, reason: #{inspect error}, message: #{inspect message}"
+        {:reply, {:text, payload}, %{socket_state | state: state}}
 
-        {:ok, req, %{socket_state | state: state}}
+      {:error, error} ->
+        Logger.warn(
+          "Wobserver.Web.ClientSocket: Can't send message, reason: #{inspect(error)}, message: #{
+            inspect(message)
+          }"
+        )
+
+        {:ok, %{socket_state | state: state}}
     end
   end
 
-  def send_response({:reply, type, state}, socket_state, req) do
-    send_response({:reply, type, nil, state}, socket_state, req)
+  def send_response({:reply, type, state}, socket_state) do
+    send_response({:reply, type, nil, state}, socket_state)
   end
 
   @doc """
   Sets up a websocket proxy to a given `proxy`.
-
-  The `state` is modified to add in the new proxy, while `req` is returned untouched.
+  The `state` is modified to add in the new proxy
   """
-  @spec setup_proxy(proxy :: String.t, state :: map, req :: :cowboy_req.req) ::
-    {:reply, {:text, String.t}, :cowboy_req.req, map}
-    | {:ok, :cowboy_req.req, map}
-  def setup_proxy(proxy, state, req) do
+  @spec setup_proxy(proxy :: String.t(), state :: map) ::
+          {:reply, {:text, String.t()}, map}
+          | {:ok, map}
+  def setup_proxy(proxy, state) do
     connected =
       proxy
-      |> Discovery.find
-      |> Remote.socket_proxy
+      |> Discovery.find()
+      |> Remote.socket_proxy()
 
     case connected do
       {:error, message} ->
         {:reply, :setup_proxy, %{error: message}, state.state}
-        |> send_response(state, req)
-      {pid, "local"} ->
-        if state.proxy != nil, do: send state.proxy, :disconnect
+        |> send_response(state)
 
-        name = Discovery.local.name
+      {pid, "local"} ->
+        if state.proxy != nil, do: send(state.proxy, :disconnect)
+
+        name = Discovery.local().name
 
         {
           :reply,
@@ -285,7 +289,8 @@ defmodule Wobserver.Web.ClientSocket do
           %{success: "Connected to: #{name}", node: name},
           state.state
         }
-        |> send_response(%{state | proxy: pid}, req)
+        |> send_response(%{state | proxy: pid})
+
       {pid, name} ->
         {
           :reply,
@@ -293,14 +298,14 @@ defmodule Wobserver.Web.ClientSocket do
           %{success: "Connected to: #{name}", node: name},
           state.state
         }
-        |> send_response(%{state | proxy: pid}, req)
+        |> send_response(%{state | proxy: pid})
     end
   end
 
-  @spec uniform_type(type :: atom | list(atom)) :: String.t
+  @spec uniform_type(type :: atom | list(atom)) :: String.t()
   defp uniform_type(type)
 
-  defp uniform_type(type) when is_atom(type), do: type |> Atom.to_string
+  defp uniform_type(type) when is_atom(type), do: type |> Atom.to_string()
 
   defp uniform_type(type) when is_list(type) do
     type
